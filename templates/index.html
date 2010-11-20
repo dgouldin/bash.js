@@ -70,6 +70,25 @@
     return 0; 
   }
 
+  // Functions to set the current position in an input. Taken from:
+  // http://stackoverflow.com/questions/499126/jquery-set-cursor-position-in-text-area/499158#499158
+  function setSelectionRange(input, selectionStart, selectionEnd) {
+    if (input.setSelectionRange) {
+      input.focus();
+      input.setSelectionRange(selectionStart, selectionEnd);
+    }
+    else if (input.createTextRange) {
+      var range = input.createTextRange();
+      range.collapse(true);
+      range.moveEnd('character', selectionEnd);
+      range.moveStart('character', selectionStart);
+      range.select();
+    }
+  }
+
+  function setCaret (el, pos) {
+    setSelectionRange(el, pos, pos);
+  }
 
   $(document).ready(function(){
     var tabCompletion = false;
@@ -102,6 +121,8 @@
       removeCursor();
       if (!retainLastPrompt) {
         $("#input-text").val('');
+      } else {
+        console.log('retaining prompt');
       }
 
       // Add the new prompt
@@ -127,13 +148,21 @@
 
       if (result.result === 'cwd') {
         addPrompt(tabCompletion, result.output);
+        tabCompletion = false;
+      } else if (result.result === 'complete') {
+        var input = $("#input-text");
+        var pos = getCaret(input.get(0));
+        var beforeCursorParts = input.val().substring(0, pos).split(' ');
+        beforeCursorParts.pop();
+        beforeCursorParts.push(result.output);
+        input.val(beforeCursorParts.join(' ') + input.val().substring(pos));
+        updateCursor();
+        tabCompletion = false;
       } else if (result.output) {
         //result.output = result.output.replace(/\n/g, '<br>');
         var shell = $("#shell");
         shell.append($("#templateOutput").tmpl(result))
       }
-
-      tabCompletion = false;
     });
     socket.on('disconnect', function(){ console.log('disconnect'); });
     socket.connect();
@@ -142,20 +171,6 @@
     $(document).bind('keydown', 'ctrl+k', function(){
       $("#shell").html('');
       addPrompt();
-    });
-    */
-
-    /*
-    $(document).keypress(function(e) {
-      var chr = String.fromCharCode(e.keyCode);
-      if (chr == '\t') {
-        tabCompletion = true;
-        socket.send($('span.input:last').text() + '\t');
-        e.preventDefault();
-        e.stopPropagation();
-        e.cancelBubble = true;
-        return false;
-      }
     });
     */
 
@@ -183,6 +198,16 @@
           keyDownHandler = setInterval(function(){
             updateCursor();
           }, 50);
+        }
+        if (e.keyCode == 9) { // tab pressed
+          console.log('tab completion detected');
+          e.preventDefault();
+          var input = $("#input-text");
+          var cursorPos = getCaret(input.get(0));
+          var val = input.val().substring(0, cursorPos);
+          socket.send(val + '\t');
+          tabCompletion = true;
+          return false;
         }
       },
       keyup: function(e) {
