@@ -1,0 +1,152 @@
+<html>
+<head>
+  <title>bash.js</title>
+  <style>
+  body {
+    font-family: monospace;
+    font-size: 14px;
+    color: white;
+    background-color: black;
+    padding: 20px 20px 0;
+    margin: 0;
+  }
+  pre {
+    font-size: 14px;
+  }
+  span.cursor {
+    background-color: #666;
+  }
+  div.error {
+    color: red;
+  }
+  </style>
+</head>
+<body>
+  <div id="shell-container"><div id="shell"></div></div>
+  <textarea id="input-textarea" style="opacity: 0;"></textarea></center>
+  <div id="the-end"></div>
+  <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.4/jquery.min.js"></script>
+  <script type="text/javascript" src="http://ajax.microsoft.com/ajax/jquery.templates/beta1/jquery.tmpl.min.js"></script>
+  <!--
+  <script type="text/javascript" src="http://gould.in/jquery.hotkeys.js"></script>
+  -->
+
+  <script id="templateInput" type="text/x-jquery-tmpl">
+  <div class="in">
+    <span class="prompt">${host}:${cwd} $</span> <span class="input"></span><span class="cursor">&nbsp;</span>
+  </div>
+  </script>
+
+  <script id="templateOutput" type="text/x-jquery-tmpl">
+  <div class="out ${result}"><pre>${output}</pre></div>
+  </script>
+
+  <script src="/socket.io/socket.io.js"></script> 
+  <script>
+
+  $(document).ready(function(){
+    var tabCompletion = false;
+    var lastCwd = null;
+    var socket = new io.Socket('localhost'); 
+
+    var addPrompt = function(retainLastPrompt, cwd) {
+      if (!cwd && !lastCwd) {
+        // Set the cwd if we don't already have one.
+        socket.send('cd ~/\n');
+        return;
+      }
+      $("span.cursor").remove(); // THERE CAN BE ONLY ONE!
+      var prompt = $("#templateInput").tmpl({
+        host: window.location.hostname,
+        cwd: cwd || lastCwd
+      });
+      var input = prompt.find('span.input');
+      if (retainLastPrompt) {
+        input.text($("span.input:last").text());
+      }
+      $("#shell").append(prompt);
+      $("#input-textarea").val(input.text()).focus();
+
+      if (cwd) {
+        lastCwd = cwd;
+      }
+
+      $(window).scrollTop(document.body.scrollHeight);
+    };
+
+    socket.on('connect', function(){ console.log('connect'); });
+    socket.on('message', function(message){
+      var result = JSON.parse(message);
+      console.log('result', result);
+
+      if (result.result === 'cwd') {
+        addPrompt(tabCompletion, result.output);
+      } else if (result.output) {
+        //result.output = result.output.replace(/\n/g, '<br>');
+        var shell = $("#shell");
+        shell.append($("#templateOutput").tmpl(result))
+      }
+
+      tabCompletion = false;
+    });
+    socket.on('disconnect', function(){ console.log('disconnect'); });
+    socket.connect();
+
+    /*
+    $(document).bind('keydown', 'ctrl+k', function(){
+      $("#shell").html('');
+      addPrompt();
+    });
+    */
+
+    $(document).keypress(function(e) {
+      var chr = String.fromCharCode(e.keyCode);
+      if (chr == '\t') {
+        tabCompletion = true;
+        socket.send($('span.input:last').text() + '\t');
+        e.preventDefault();
+        e.stopPropagation();
+        e.cancelBubble = true;
+        return false;
+      }
+    });
+
+    var keyDownHandler = null;
+    $("#input-textarea").bind({
+      blur: function() {
+        $(this).focus();
+      },
+      keypress: function(e) {
+        var that = this;
+        var chr = String.fromCharCode(e.keyCode);
+        if (chr === '\r') {
+          socket.send($('span.input:last').text() + '\n');
+        } else {
+          setTimeout(function(){
+            $('span.input:last').text($(that).val());
+          }, 0);
+        }
+      },
+      keydown: function(e) {
+        var chr = String.fromCharCode(e.keyCode);
+        if (chr === '\b') {
+          var that = this;
+          var input = $('span.input:last');
+          keyDownHandler = setInterval(function(){
+            input.text($(that).val());
+          }, 50);
+        }
+      },
+      keyup: function(e) {
+        if (keyDownHandler !== null) {
+          clearInterval(keyDownHandler);
+          keyDownHandler = null;
+          $('span.input:last').text($(this).val());
+        }
+      }
+    });
+    addPrompt();
+  });
+  </script>
+</body>
+</html>
