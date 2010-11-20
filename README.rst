@@ -8,6 +8,5 @@ TODO
 ====
 
  * Tab completion (implemented on the server but having trouble hooking the client tab event).
- * Cursor arrow key events.
  * Ctrl-k/Cmd-k clear screen event.
  * Cross browser testing.

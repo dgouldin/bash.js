@@ -23,7 +23,7 @@
 </head>
 <body>
   <div id="shell-container"><div id="shell"></div></div>
-  <textarea id="input-textarea" style="opacity: 0;"></textarea></center>
+  <input type="text" id="input-text" style="opacity: 0;">
   <div id="the-end"></div>
   <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.4/jquery.min.js"></script>
   <script type="text/javascript" src="http://ajax.microsoft.com/ajax/jquery.templates/beta1/jquery.tmpl.min.js"></script>
@@ -33,8 +33,12 @@
 
   <script id="templateInput" type="text/x-jquery-tmpl">
   <div class="in">
-    <span class="prompt">${host}:${cwd} $</span> <span class="input"></span><span class="cursor">&nbsp;</span>
+    <span class="prompt">${host}:${cwd} $</span> <span class="input"></span>
   </div>
+  </script>
+
+  <script id="templateCursor" type="text/x-jquery-tmpl">
+  <span class="before-cursor">${before}</span><span class="cursor">{{if cursor}}${cursor}{{else}}&nbsp;{{/if}}</span><span class="after-cursor">${after}</span>
   </script>
 
   <script id="templateOutput" type="text/x-jquery-tmpl">
@@ -43,11 +47,49 @@
 
   <script src="/socket.io/socket.io.js"></script> 
   <script>
+  function getCaret(el) { 
+    // Function to find the current position in an input. Taken from:
+    // http://stackoverflow.com/questions/263743/how-to-get-cursor-position-in-textarea/263796#263796
+    if (el.selectionStart) { 
+      return el.selectionStart; 
+    } else if (document.selection) { 
+      el.focus(); 
+
+      var r = document.selection.createRange(); 
+      if (r == null) { 
+        return 0; 
+      } 
+
+      var re = el.createTextRange(), 
+          rc = re.duplicate(); 
+      re.moveToBookmark(r.getBookmark()); 
+      rc.setEndPoint('EndToStart', re); 
+
+      return rc.text.length; 
+    }  
+    return 0; 
+  }
+
 
   $(document).ready(function(){
     var tabCompletion = false;
     var lastCwd = null;
     var socket = new io.Socket('localhost'); 
+
+    var updateCursor = function() {
+      var input = $("#input-text");
+      var pos = getCaret(input.get(0));
+      var val = input.val();
+      $('span.input:last').html($("#templateCursor").tmpl({
+        before: val.substring(0, pos),
+        cursor: val.charAt(pos),
+        after: val.substring(pos + 1)
+      }));
+    }
+
+    var removeCursor = function() {
+      $('span.input:last').text($("#input-text").val());
+    }
 
     var addPrompt = function(retainLastPrompt, cwd) {
       if (!cwd && !lastCwd) {
@@ -55,23 +97,27 @@
         socket.send('cd ~/\n');
         return;
       }
-      $("span.cursor").remove(); // THERE CAN BE ONLY ONE!
-      var prompt = $("#templateInput").tmpl({
+
+      // Clean up
+      removeCursor();
+      if (!retainLastPrompt) {
+        $("#input-text").val('');
+      }
+
+      // Add the new prompt
+      $("#shell").append($("#templateInput").tmpl({
         host: window.location.hostname,
         cwd: cwd || lastCwd
-      });
-      var input = prompt.find('span.input');
-      if (retainLastPrompt) {
-        input.text($("span.input:last").text());
-      }
-      $("#shell").append(prompt);
-      $("#input-textarea").val(input.text()).focus();
+      }));
+      updateCursor();
+
+      // Reset focus
+      $("#input-text").focus();
+      $(window).scrollTop(document.body.scrollHeight);
 
       if (cwd) {
         lastCwd = cwd;
       }
-
-      $(window).scrollTop(document.body.scrollHeight);
     };
 
     socket.on('connect', function(){ console.log('connect'); });
@@ -99,6 +145,7 @@
     });
     */
 
+    /*
     $(document).keypress(function(e) {
       var chr = String.fromCharCode(e.keyCode);
       if (chr == '\t') {
@@ -110,9 +157,10 @@
         return false;
       }
     });
+    */
 
     var keyDownHandler = null;
-    $("#input-textarea").bind({
+    $("#input-text").bind({
       blur: function() {
         $(this).focus();
       },
@@ -120,20 +168,20 @@
         var that = this;
         var chr = String.fromCharCode(e.keyCode);
         if (chr === '\r') {
-          socket.send($('span.input:last').text() + '\n');
+          socket.send($(that).val() + '\n');
         } else {
           setTimeout(function(){
-            $('span.input:last').text($(that).val());
+            updateCursor();
           }, 0);
         }
       },
       keydown: function(e) {
-        var chr = String.fromCharCode(e.keyCode);
-        if (chr === '\b') {
+        var chars = [8, 37, 39]; // [backspace, leftArrow, rightArrow]
+        if (chars.indexOf(e.keyCode) !== -1) {
           var that = this;
           var input = $('span.input:last');
           keyDownHandler = setInterval(function(){
-            input.text($(that).val());
+            updateCursor();
           }, 50);
         }
       },
@@ -141,7 +189,7 @@
         if (keyDownHandler !== null) {
           clearInterval(keyDownHandler);
           keyDownHandler = null;
-          $('span.input:last').text($(this).val());
+          updateCursor();
         }
       }
     });
