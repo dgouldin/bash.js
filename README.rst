@@ -7,5 +7,5 @@ bash.js is a bash shell in your browser served by `node.js <https://github.com/r
 TODO
 ====
 
- * Ctrl-k/Cmd-k clear screen event.
+ * History support, mapping to up/down arrows.
  * Cross browser testing.
